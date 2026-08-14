@@ -1,0 +1,28 @@
+# Secrets
+**/.env
+
+# Node
+**/node_modules/
+**/dist/
+
+# Flutter
+**/build/
+**/.dart_tool/
+
+# IDE
+**/.idea/
+**/.vscode/
+
+# Runtime uploads
+**/uploads/
+
+# APK too large for normal GitHub
+app-debug.apk
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Crash logs
+**/hs_err_pid*.log
+**/replay_pid*.log

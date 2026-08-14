@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  REVIEWER
+  ADMIN
+}
+
+enum PackagePriority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum PackageStatus {
+  draft
+  queued
+  submitted
+  processing
+  waiting_for_external_result
+  ready
+  completed
+  failed
+}
+
+enum PaymentStatus {
+  PENDING
+  REQUIRES_CONFIRMATION
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUND_PENDING
+  REFUNDED
+}
+
+enum WebhookStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+enum AuditAction {
+  PACKAGE_CREATED
+  PACKAGE_STATUS_CHANGED
+  ATTACHMENT_UPLOADED
+  PAYMENT_CREATED
+  PAYMENT_CONFIRMED
+  PAYMENT_FAILED
+  PAYMENT_REFUNDED
+  ROLE_CHANGED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  refreshTokens RefreshToken[]
+  packages      TaskPackage[]
+  payments      Payment[]
+
+  @@index([role])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model TaskPackage {
+  id        String          @id @default(uuid())
+  clientId  String?         @unique
+  userId    String
+  priority  PackagePriority @default(normal)
+  notes     String?
+  latitude  Float?
+  longitude Float?
+  status    PackageStatus   @default(submitted)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  attachments     Attachment[]
+  items           PackageItem[]
+  statusHistory   PackageStatusHistory[]
+  providerResults ProviderResult[]
+  payments        Payment[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model PackageItem {
+  id          String  @id @default(uuid())
+  packageId   String
+  name        String
+  description String?
+  quantity    Int     @default(1)
+
+  package TaskPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@index([packageId])
+}
+
+model Attachment {
+  id             String   @id @default(uuid())
+  packageId      String
+  fileName       String
+  url            String
+  mimeType       String?
+  size           Int      @default(0)
+  idempotencyKey String?  @unique
+  createdAt      DateTime @default(now())
+
+  package TaskPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@index([packageId])
+}
+
+model PackageStatusHistory {
+  id        String        @id @default(uuid())
+  packageId String
+  status    PackageStatus
+  createdAt DateTime      @default(now())
+
+  package TaskPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@index([packageId, createdAt])
+}
+
+model ProviderResult {
+  id         String   @id @default(uuid())
+  packageId  String
+  provider   String
+  externalId String?
+  status     String
+  score      Float?
+  message    String?
+  rawHash    String?
+  createdAt  DateTime @default(now())
+
+  package TaskPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, provider, externalId])
+  @@index([packageId])
+  @@index([provider])
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  packageId         String
+  userId            String
+  idempotencyKey    String        @unique
+  providerPaymentId String        @unique
+  amountMinor       Int
+  currency          String        @default("QAR")
+  status            PaymentStatus @default(PENDING)
+  failureReason     String?
+  refundedAmount    Int           @default(0)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  package TaskPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  webhookEvents PaymentWebhookEvent[]
+
+  @@index([packageId])
+  @@index([userId])
+  @@index([status])
+}
+
+model PaymentWebhookEvent {
+  id              String        @id @default(uuid())
+  paymentId       String
+  providerEventId String        @unique
+  eventType       String
+  status          WebhookStatus @default(RECEIVED)
+  payload         Json
+  createdAt       DateTime      @default(now())
+  processedAt     DateTime?
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([status])
+}
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  actorId   String?
+  action    AuditAction
+  entity    String
+  entityId  String
+  oldValue  Json?
+  newValue  Json?
+  context   String?
+  createdAt DateTime    @default(now())
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([action])
+  @@index([createdAt])
+}
